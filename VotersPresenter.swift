@@ -71,10 +71,15 @@ class VotersPresenter {
     var loadingFollowedState: State = .initial
     var loadingFollowersState: State = .initial
     
+    var searchMode: SearchState = .initial
+    
+    fileprivate weak var pendingRequestWorkItem : DispatchWorkItem?
+    fileprivate weak var pendingCompletionRequestWorkItem : DispatchWorkItem?
+    
 }
 
 //MARK: - Paths Observators
-extension VotersLoadPresenter {
+extension VotersPresenter {
     
     enum Changes {
         case voterRemoved(key: String)
@@ -105,7 +110,7 @@ extension VotersLoadPresenter {
 }
 
 //MARK: - Search voters methods
-extension VotersLoadPresenter {
+extension VotersPresenter {
     
     struct SearchState{
         var itemCount: Int = 0{
@@ -116,7 +121,7 @@ extension VotersLoadPresenter {
         var notEnoughLetters: Bool = true
         var noResults: Bool = false
         var initialLoading: Bool = true
-        static let empty = SearchState()
+        static let initial = SearchState()
         
     }
     
@@ -124,7 +129,7 @@ extension VotersLoadPresenter {
         
         let ref = userVoters.ref(uid: uid).queryOrdered(byChild: "username").queryStarting(atValue: name).queryEnding(atValue: name + "\u{f8ff}")
         
-        votersDataLayer.searchVoter(name: name, fromRef: ref) { [weak self] (votersDict) in
+        votersSearchLayer.searchVoter(name: name, fromRef: ref) { [weak self] (votersDict) in
             
             switch userVoters{
             case .followed:
@@ -136,9 +141,6 @@ extension VotersLoadPresenter {
         }
     }
     
-    private weak var pendingRequestWorkItem : DispatchWorkItem?
-    private weak var pendingCompletionRequestWorkItem : DispatchWorkItem?
-    
     func searchingWithDebounce(_ userVoters: Voters, ofUserUID uid: String, voterName name: String, completion: (() -> Void)?){
         
         pendingRequestWorkItem?.cancel()
@@ -149,7 +151,7 @@ extension VotersLoadPresenter {
             
             let completionRequestWorkItem = DispatchWorkItem(block: {
                 
-                completion()
+                completion!()
                 
             })
             
@@ -169,7 +171,7 @@ extension VotersLoadPresenter {
 }
 
 //MARK: - Batch fetching methods
-extension VotersLoadPresenter {
+extension VotersPresenter {
     
     fileprivate enum Action {
         case beginBatchFetch
@@ -193,7 +195,7 @@ extension VotersLoadPresenter {
         
         let oldState = userVoters == .followed ? self.loadingFollowedState : self.loadingFollowersState
         
-        let newState = VotersLoadPresenter.handleAction(.beginBatchFetch, fromState: oldState)
+        let newState = VotersPresenter.handleAction(.beginBatchFetch, fromState: oldState)
         fetchingStarted!(newState, oldState)
         
         if userVoters == .followed { self.loadingFollowedState = newState } else { self.loadingFollowersState = newState }
@@ -201,7 +203,7 @@ extension VotersLoadPresenter {
         loadNextBatch(of: userVoters) { (loadedVoters) in
             
             let action = Action.endBatchFetch(resultCount: loadedVoters)
-            var newestState = VotersLoadPresenter.handleAction(action, fromState: newState)
+            var newestState = VotersPresenter.handleAction(action, fromState: newState)
             fetchingCompleted(newestState, oldState)
             
             newestState.noMoreVoters = loadedVoters == 0 ? true : false
